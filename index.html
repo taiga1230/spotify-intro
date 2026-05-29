@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>イントロドン ホスト画面</title>
+</head>
+<body>
+    <h1>イントロドン - ホスト用</h1>
+    <button id="login-button">Spotifyでログイン</button>
+    
+    <div id="player-controls" style="display: none; margin-top: 20px;">
+        <button id="play-button" style="font-size: 20px; padding: 10px 20px;">曲を流す（再開）</button>
+        <button id="pause-button" style="font-size: 20px; padding: 10px 20px; margin-left: 10px;">一時停止</button>
+        
+        <h2 id="winner-display" style="color: red; font-size: 40px; margin-top: 30px;"></h2>
+
+        <hr style="margin-top: 40px;">
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <h3>スマホから参加！</h3>
+            <div id="qrcode-area"></div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+    <script src="https://sdk.scdn.co/spotify-player.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

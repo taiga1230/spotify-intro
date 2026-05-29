@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>早押しボタン</title>
+    <style>
+        body { text-align: center; font-family: sans-serif; padding-top: 50px; }
+        #buzzer {
+            width: 250px; height: 250px; border-radius: 50%;
+            background-color: red; color: white; font-size: 32px; font-weight: bold;
+            border: none; box-shadow: 0 10px #990000; cursor: pointer;
+        }
+        #buzzer:active { box-shadow: 0 2px #990000; transform: translateY(8px); }
+    </style>
+</head>
+<body>
+    <h1>イントロドン！回答者画面</h1>
+    
+    <input type="text" id="username" placeholder="名前を入力してください" style="font-size: 20px; padding: 5px; margin-bottom: 30px;"><br>
+    
+    <button id="buzzer">DON!</button>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <script src="player.js"></script>
+</body>
+</html>
