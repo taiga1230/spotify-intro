@@ -2,6 +2,7 @@ const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8';
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
 let spotifyPlayer = null; 
+let audioCtx = null; // ブザー音用の音声コンテキストをグローバルで管理
 
 const s='s', p='p', o='o', t='t', i='i', f='f', y='y', dot='.', c='c', m='m';
 const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m;
@@ -96,26 +97,37 @@ function initSpotifyPlayer(token) {
     if (window.Spotify) { window.onSpotifyWebPlaybackSDKReady(); }
 }
 
+// 【ブザー音対策】ボタンをクリックした瞬間にブラウザの音声ブロックを解除する関数
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
 function setupButtons(token, deviceId) {
     const resumeResetButton = document.getElementById('resume-reset-button');
     const pureResetButton = document.getElementById('pure-reset-button');
     const correctButton = document.getElementById('correct-button');
     const closeAnswerButton = document.getElementById('close-answer-button');
 
-    // 1. 次の早押しを有効にする（曲を再開）：actionにresumeを設定
+    // ボタンを押したタイミング（ユーザージェスチャー）で音声システムを起動・再開させる
     resumeResetButton.addEventListener('click', () => {
+        initAudio();
         document.getElementById('answer-panel').style.display = 'none';
         database.ref('room').set({ status: 'playing', winner: '', action: 'resume' });
     });
 
-    // 2. 回答者リセットだけ（曲はそのまま）：actionにpure_resetを設定
     pureResetButton.addEventListener('click', () => {
+        initAudio();
         document.getElementById('answer-panel').style.display = 'none';
         database.ref('room').set({ status: 'playing', winner: '', action: 'pure_reset' });
     });
 
-    // ◯ 正解表示
     correctButton.addEventListener('click', () => {
+        initAudio();
         if (!spotifyPlayer) return;
 
         spotifyPlayer.getCurrentState().then(state => {
@@ -124,7 +136,6 @@ function setupButtons(token, deviceId) {
                 document.getElementById('answer-panel').style.display = 'block';
                 return;
             }
-            
             const trackName = state.track_window.current_track.name;
             const artistName = state.track_window.current_track.artists.map(a => a.name).join(', ');
             
@@ -140,7 +151,7 @@ function setupButtons(token, deviceId) {
 
 function playBuzzerSound() {
     try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        initAudio(); // 音声コンテキストの状態を確認
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         
@@ -169,7 +180,8 @@ function listenToBuzzer(token, deviceId) {
         if (!data) return;
 
         if (data.status === 'paused' && currentStatus !== 'paused') {
-            await fetch(`${API_URL}/v1/me/player/pause?device_id=${deviceId}`, {
+            // 【変更】特定デバイスIDの縛りを外し、現在音が出ているアクティブなアプリを一時停止する
+            await fetch(`${API_URL}/v1/me/player/pause`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -182,21 +194,19 @@ function listenToBuzzer(token, deviceId) {
             currentStatus = 'paused';
         } 
         
-        // リセット処理の分岐
         else if (data.status === 'playing' && (currentStatus !== 'playing' || data.action === 'resume')) {
             document.getElementById('winner-display').textContent = '次の回答を待っています...';
             
-            // 「action: resume（曲を再開）」のボタンが押されたときだけ、Spotifyに再生命令を送る
+            // 【変更】特定デバイスIDの縛りを外し、アクティブなアプリの再生を再開する
             if (data.action === 'resume') {
-                await fetch(`${API_URL}/v1/me/player/play?device_id=${deviceId}`, {
+                await fetch(`${API_URL}/v1/me/player/play`, {
                     method: 'PUT',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
             }
-            // pure_resetのときは、上のif文を通らないため曲は停止したまま、スマホのロックだけが解除されます
             
             currentStatus = 'playing';
-            database.ref('room/action').set('none'); // アクションを初期化
+            database.ref('room/action').set('none'); 
         }
     });
 }
