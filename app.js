@@ -2,7 +2,6 @@ const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8';
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
 let spotifyPlayer = null; 
-let previewAudio = null; // サビ音声を制御するためのグローバル変数
 
 const s='s', p='p', o='o', t='t', i='i', f='f', y='y', dot='.', c='c', m='m';
 const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m;
@@ -98,30 +97,26 @@ function initSpotifyPlayer(token) {
 }
 
 function setupButtons(token, deviceId) {
-    const resetButton = document.getElementById('reset-button');
+    const resumeResetButton = document.getElementById('resume-reset-button');
+    const pureResetButton = document.getElementById('pure-reset-button');
     const correctButton = document.getElementById('correct-button');
     const closeAnswerButton = document.getElementById('close-answer-button');
 
-    // サビの音声を止める共通関数
-    function stopPreview() {
-        if (previewAudio) {
-            previewAudio.pause();
-            previewAudio = null;
-        }
-    }
-
-    // 回答者リセット：サビを止め、状態を元に戻す
-    resetButton.addEventListener('click', () => {
-        stopPreview();
+    // 1. 次の早押しを有効にする（曲を再開）：actionにresumeを設定
+    resumeResetButton.addEventListener('click', () => {
         document.getElementById('answer-panel').style.display = 'none';
-        database.ref('room').set({ status: 'playing', winner: '' });
+        database.ref('room').set({ status: 'playing', winner: '', action: 'resume' });
     });
 
-    // ◯ 正解：曲名を表示し、同時にサビ（プレビュー音源）を再生する
+    // 2. 回答者リセットだけ（曲はそのまま）：actionにpure_resetを設定
+    pureResetButton.addEventListener('click', () => {
+        document.getElementById('answer-panel').style.display = 'none';
+        database.ref('room').set({ status: 'playing', winner: '', action: 'pure_reset' });
+    });
+
+    // ◯ 正解表示
     correctButton.addEventListener('click', () => {
         if (!spotifyPlayer) return;
-
-        stopPreview(); // すでに鳴っていたら一旦リセット
 
         spotifyPlayer.getCurrentState().then(state => {
             if (!state) {
@@ -130,35 +125,15 @@ function setupButtons(token, deviceId) {
                 return;
             }
             
-            const trackId = state.track_window.current_track.id;
             const trackName = state.track_window.current_track.name;
             const artistName = state.track_window.current_track.artists.map(a => a.name).join(', ');
             
             document.getElementById('track-info-display').textContent = `${trackName} / ${artistName}`;
             document.getElementById('answer-panel').style.display = 'block';
-
-            // Spotify APIからその曲のプレビューURL（mp3）を取得してブラウザで鳴らす
-            fetch(`${API_URL}/v1/tracks/${trackId}`, {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${token}` }
-            })
-            .then(res => res.json())
-            .then(trackData => {
-                if (trackData.preview_url) {
-                    previewAudio = new Audio(trackData.preview_url);
-                    previewAudio.volume = 0.4; // サビの音量調整（0.0 〜 1.0）
-                    previewAudio.play();
-                } else {
-                    console.log('この曲はSpotify側でプレビュー音源（サビデータ）が用意されていません。');
-                }
-            })
-            .catch(err => console.error('プレビュー取得失敗:', err));
         });
     });
 
-    // 曲名表示を閉じる：サビを止める
     closeAnswerButton.addEventListener('click', () => {
-        stopPreview();
         document.getElementById('answer-panel').style.display = 'none';
     });
 }
@@ -207,15 +182,21 @@ function listenToBuzzer(token, deviceId) {
             currentStatus = 'paused';
         } 
         
-        else if (data.status === 'playing' && currentStatus !== 'playing') {
+        // リセット処理の分岐
+        else if (data.status === 'playing' && (currentStatus !== 'playing' || data.action === 'resume')) {
             document.getElementById('winner-display').textContent = '次の回答を待っています...';
             
-            await fetch(`${API_URL}/v1/me/player/play?device_id=${deviceId}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            // 「action: resume（曲を再開）」のボタンが押されたときだけ、Spotifyに再生命令を送る
+            if (data.action === 'resume') {
+                await fetch(`${API_URL}/v1/me/player/play?device_id=${deviceId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            }
+            // pure_resetのときは、上のif文を通らないため曲は停止したまま、スマホのロックだけが解除されます
             
             currentStatus = 'playing';
+            database.ref('room/action').set('none'); // アクションを初期化
         }
     });
 }
