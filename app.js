@@ -1,7 +1,7 @@
-const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8'; 
+const CLIENT_ID = '93fe81b4793f46f693d2ec27e134d5b8'; 
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
-// --- Firebase の初期化 (大雅さんの情報に設定済) ---
+// --- Firebase の初期化 ---
 const firebaseConfig = {
     apiKey: "AIzaSyDNjRsJN9J_vDNa-ZnwONrdDll4wloJFpo",
     authDomain: "spotify-intro-don.firebaseapp.com",
@@ -75,13 +75,13 @@ function initSpotifyPlayer(token) {
 
         player.addListener('ready', ({ device_id }) => {
             document.getElementById('player-controls').style.display = 'block';
-            // --- 追加：プレイヤー画面のURLからQRコード画像を生成して表示 ---
-            const playerUrl = `${window.location.origin}/player.html`;
+            
+            // プレイヤー画面のURLを完全に固定
+            const playerUrl = 'https://taiga1230.github.io/spotify-intro/player.html';
             const qrCodeArea = document.getElementById('qrcode-area');
             qrCodeArea.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(playerUrl)}" alt="QR Code">`;
-            // -----------------------------------------------------------
+
             setupButtons(token, device_id);
-            // データベースの監視を開始する
             listenToBuzzer(token, device_id);
         });
         player.connect();
@@ -89,23 +89,21 @@ function initSpotifyPlayer(token) {
     if (window.Spotify) { window.onSpotifyWebPlaybackSDKReady(); }
 }
 
-// 物理ボタン（画面のボタン）での操作
+// 画面のボタンでの操作
 function setupButtons(token, deviceId) {
     const playButton = document.getElementById('play-button');
     const pauseButton = document.getElementById('pause-button');
 
     playButton.addEventListener('click', () => {
-        // 曲を流すときはデータベースの状態を「再生中」に更新する
         database.ref('room').set({ status: 'playing', winner: '' });
     });
 
     pauseButton.addEventListener('click', () => {
-        // 手動で止めたとき
         database.ref('room').set({ status: 'paused', winner: 'ホスト（手動停止）' });
     });
 }
 
-// --- データベースを監視してSpotifyをコントロールする核心部分 ---
+// データベースを監視してSpotifyをコントロールする部分
 function listenToBuzzer(token, deviceId) {
     let currentStatus = 'initial';
 
@@ -113,7 +111,7 @@ function listenToBuzzer(token, deviceId) {
         const data = snapshot.val();
         if (!data) return;
 
-        // 誰かがボタンを押して「paused」になった瞬間、Spotifyを止める
+        // 「paused」になった瞬間、Spotifyを止める
         if (data.status === 'paused' && currentStatus !== 'paused') {
             await fetch(`https://api.spotify.com/v1/me/player/pause?device_id=${deviceId}`, {
                 method: 'PUT',
@@ -123,14 +121,13 @@ function listenToBuzzer(token, deviceId) {
             currentStatus = 'paused';
         } 
         
-        // ホストがリセット（再開）して「playing」になった瞬間、曲を続きから流す
+        // 「playing」になった瞬間、曲を続きから流す
         else if (data.status === 'playing' && currentStatus !== 'playing') {
             document.getElementById('winner-display').textContent = '再生中...';
             
             let bodyData = null;
             if (currentStatus === 'initial') {
-                // 完全な初回だけ曲を指定して1から流す
-                const testTrackUri = 'spotify:track:4IorGv8976Xm6nS7vB6ZpG'; 
+                const testTrackUri = 'spotify:track:4IorGv8976Xm6nS7vB6ZpG'; // デスクホールの初期読み込み
                 bodyData = JSON.stringify({ uris: [testTrackUri] });
             }
 
