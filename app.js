@@ -1,5 +1,5 @@
 const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8'; 
-const REDIRECT_URI = 'http://127.0.0.1:5500/';
+const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
 // --- Firebase の初期化 (大雅さんの情報に設定済) ---
 const firebaseConfig = {
