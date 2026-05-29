@@ -1,4 +1,4 @@
-const CLIENT_ID = '93fe81b4793f46f693d2ec27e134d5b8'; 
+const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8'; 
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
 // --- Firebase の初期化 ---
