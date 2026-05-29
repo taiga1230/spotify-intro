@@ -10,17 +10,18 @@
     <button id="login-button">Spotifyでログイン</button>
     
     <div id="player-controls" style="display: none; margin-top: 20px;">
-        <div style="margin-bottom: 20px;">
-            <button id="next-button" style="font-size: 20px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">次の曲を流す (ランダム)</button>
-        </div>
-        
         <div id="action-controls" style="margin-bottom: 20px;">
-            <button id="correct-button" style="font-size: 18px; padding: 10px 15px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer;">◯ 正解 (次の曲へ)</button>
-            <button id="resume-button" style="font-size: 18px; padding: 10px 15px; background-color: #FF9800; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✕ 不正解 (続きから再開)</button>
-            <button id="restart-button" style="font-size: 18px; padding: 10px 15px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✕ 不正解 (最初から弾き直す)</button>
+            <button id="reset-button" style="font-size: 20px; padding: 12px 25px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">➔ 次の早押しを有効にする（回答者リセット）</button>
+            <button id="correct-button" style="font-size: 18px; padding: 12px 20px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 15px;">◯ 正解（曲名を表示）</button>
         </div>
 
-        <h2 id="winner-display" style="color: red; font-size: 40px; margin-top: 30px;"></h2>
+        <h2 id="winner-display" style="color: red; font-size: 40px; margin-top: 30px; min-height: 50px;"></h2>
+
+        <div id="answer-panel" style="display: none; background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin-top: 20px; border: 2px solid #2196F3;">
+            <h3 style="margin: 0; color: #0d47a1;">【現在の曲情報】</h3>
+            <p id="track-info-display" style="font-size: 28px; font-weight: bold; margin: 10px 0; color: #333;"></p>
+            <button id="close-answer-button" style="font-size: 16px; padding: 5px 15px; background-color: #616161; color: white; border: none; border-radius: 4px; cursor: pointer;">曲名表示を閉じる</button>
+        </div>
 
         <hr style="margin-top: 40px;">
         
