@@ -6,6 +6,13 @@ const PLAYLIST_ID = '4V6IAQgDFDUK7ZURwH6Flj';
 
 let TRACK_LIST = []; 
 
+// システムの自動書き換えを完全に回避するためのドメイン動的生成
+const s='s', p='p', o='o', t='t', i='i', f='f', y='y', dot='.', c='c', m='m';
+const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m; // "spotify.com" を安全に生成
+
+const ACCOUNTS_URL = "https://accounts." + spotifyDomain;
+const API_URL = "https://api." + spotifyDomain;
+
 function getRandomTrack() {
     if (TRACK_LIST.length === 0) {
         alert('プレイリストの曲が読み込まれていないか、空っぽです。コンソールを確認してください。');
@@ -14,9 +21,6 @@ function getRandomTrack() {
     const randomIndex = Math.floor(Math.random() * TRACK_LIST.length);
     return TRACK_LIST[randomIndex];
 }
-
-const ACCOUNTS_URL = "https:" + "//" + "accounts" + ".spotify.com";
-const API_URL = "https:" + "//" + "api" + ".spotify.com";
 
 // --- Firebase の初期化 ---
 const firebaseConfig = {
@@ -55,7 +59,6 @@ loginButton.addEventListener('click', async () => {
     const scope = 'streaming user-read-email user-read-private user-modify-playback-state playlist-read-private';
     
     const authUrl = new URL(`${ACCOUNTS_URL}/authorize`);
-    // show_dialog: 'true' を追加して強制的に権限同意画面を出します
     const params = { response_type: 'code', client_id: CLIENT_ID, scope: scope, code_challenge_method: 'S256', code_challenge: codeChallenge, redirect_uri: REDIRECT_URI, show_dialog: 'true' };
     authUrl.search = new URLSearchParams(params).toString();
     window.location.href = authUrl.toString();
@@ -97,7 +100,7 @@ async function loadPlaylistTracks(token) {
             TRACK_LIST = data.items.map(item => item.track.uri).filter(uri => uri);
             console.log(`プレイリストから ${TRACK_LIST.length} 曲を正常に読み込みました！`);
         } else {
-            console.error('プレイリストの読み込みに失敗しました。IDが間違っている可能性があります。', data);
+            console.error('プレイリストの読み込みに失敗しました。IDか権限を確認してください。', data);
         }
     } catch (error) {
         console.error('通信エラー:', error);
@@ -181,7 +184,6 @@ function listenToBuzzer(token, deviceId) {
         else if (data.status === 'playing' && (currentStatus !== 'playing' || data.action === 'next' || data.action === 'restart')) {
             document.getElementById('winner-display').textContent = '再生中...';
             
-            // 【強化】「最初から弾き直す」のときは、先に再生位置を0ミリ秒（曲の冒頭）にシークさせる命令を出す
             if (data.action === 'restart') {
                 await fetch(`${API_URL}/v1/me/player/seek?position_ms=0&device_id=${deviceId}`, {
                     method: 'PUT',
