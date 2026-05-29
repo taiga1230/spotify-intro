@@ -1,14 +1,18 @@
 const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8'; 
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
-// --- イントロドンに使用する曲のリスト ---
-const TRACK_LIST = [
-    'spotify:track:4IorGv8976Xm6nS7vB6ZpG', // デフォルト: ダンスホール (Mrs. GREEN APPLE)
-    // 曲を増やしたい場合はここにカンマ区切りで 'spotify:track:xxxx' を追加してください
-];
+// --- 【ここを設定】使用したいSpotifyのプレイリストIDを入力 ---
+const PLAYLIST_ID = '4V6IAQgDFDUK7ZURwH6Flj'; 
+
+// プレイリストから取得した曲のURIがここへ自動で入ります
+let TRACK_LIST = []; 
 
 // ランダムに1曲選ぶ関数
 function getRandomTrack() {
+    if (TRACK_LIST.length === 0) {
+        alert('プレイリストの曲が読み込まれていないか、空っぽです。');
+        return 'spotify:track:4IorGv8976Xm6nS7vB6ZpG'; // 万が一のときのバックアップ（ダンスホール）
+    }
     const randomIndex = Math.floor(Math.random() * TRACK_LIST.length);
     return TRACK_LIST[randomIndex];
 }
@@ -50,7 +54,9 @@ loginButton.addEventListener('click', async () => {
     window.localStorage.setItem('code_verifier', codeVerifier);
     const hashed = await sha256(codeVerifier);
     const codeChallenge = base64encode(hashed);
-    const scope = 'streaming user-read-email user-read-private user-modify-playback-state';
+    
+    // プレイリストを読み込むための権限（playlist-read-private）をスコープに追加
+    const scope = 'streaming user-read-email user-read-private user-modify-playback-state playlist-read-private';
     
     const authUrl = new URL(`${ACCOUNTS_URL}/authorize`);
     const params = { response_type: 'code', client_id: CLIENT_ID, scope: scope, code_challenge_method: 'S256', code_challenge: codeChallenge, redirect_uri: REDIRECT_URI };
@@ -75,9 +81,34 @@ async function getToken(code) {
         if (response.access_token) {
             loginButton.style.display = 'none';
             window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // プレイヤー初期化の前に、指定されたプレイリストから曲をごっそり取得する
+            await loadPlaylistTracks(response.access_token);
+            
             initSpotifyPlayer(response.access_token);
         }
     } catch (error) { console.error(error); }
+}
+
+// 追記：Spotifyのプレイリストから曲一覧を取得する関数
+async function loadPlaylistTracks(token) {
+    try {
+        const response = await fetch(`${API_URL}/v1/playlists/${PLAYLIST_ID}/tracks`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        
+        if (data.items) {
+            // プレイリスト内の各曲から「URI（曲の識別ID）」だけを抜き出して配列にする
+            TRACK_LIST = data.items.map(item => item.track.uri).filter(uri => uri);
+            console.log(`プレイリストから ${TRACK_LIST.length} 曲を正常に読み込みました！`);
+        } else {
+            console.error('プレイリストのデータ構造が正しくありません', data);
+        }
+    } catch (error) {
+        console.error('プレイリストの取得中にエラーが発生しました:', error);
+    }
 }
 
 function initSpotifyPlayer(token) {
@@ -122,7 +153,7 @@ function setupButtons(token, deviceId) {
     resumeButton.addEventListener('click', () => {
         database.ref('room').once('value', (snapshot) => {
             const data = snapshot.val();
-            const currentTrack = data ? data.trackUri : TRACK_LIST[0];
+            const currentTrack = data ? data.trackUri : getRandomTrack();
             database.ref('room').set({ status: 'playing', winner: '', action: 'resume', trackUri: currentTrack });
         });
     });
@@ -130,7 +161,7 @@ function setupButtons(token, deviceId) {
     restartButton.addEventListener('click', () => {
         database.ref('room').once('value', (snapshot) => {
             const data = snapshot.val();
-            const currentTrack = data ? data.trackUri : TRACK_LIST[0];
+            const currentTrack = data ? data.trackUri : getRandomTrack();
             database.ref('room').set({ status: 'playing', winner: '', action: 'restart', trackUri: currentTrack });
         });
     });
@@ -158,8 +189,15 @@ function listenToBuzzer(token, deviceId) {
             document.getElementById('winner-display').textContent = '再生中...';
             
             let bodyData = null;
-            if (data.action === 'next' || data.action === 'restart') {
-                bodyData = JSON.stringify({ uris: [data.trackUri] });
+            if (data.action === 'next' || data.action === 'restart' || currentStatus === 'initial') {
+                // 初回、または「次へ」「最初から」のときは、選ばれた曲のIDをセットして1から流す
+                const targetTrack = data.trackUri || getRandomTrack();
+                bodyData = JSON.stringify({ uris: [targetTrack] });
+                
+                // 初回起動時用のデータ同期
+                if (currentStatus === 'initial') {
+                    database.ref('room/trackUri').set(targetTrack);
+                }
             }
 
             await fetch(`${API_URL}/v1/me/player/play?device_id=${deviceId}`, {
@@ -169,7 +207,7 @@ function listenToBuzzer(token, deviceId) {
             });
             
             currentStatus = 'playing';
-            database.ref('room/action').set('none'); // アクション完了後にリセット
+            database.ref('room/action').set('none'); 
         }
     });
 }
