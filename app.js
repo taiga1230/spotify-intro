@@ -1,9 +1,9 @@
 const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8'; 
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
-let spotifyPlayer = null; // 外部からプレイヤーを操作するためのグローバル変数
+let spotifyPlayer = null; 
+let previewAudio = null; // サビ音声を制御するためのグローバル変数
 
-// システムの自動書き換えを回避するためのドメイン生成
 const s='s', p='p', o='o', t='t', i='i', f='f', y='y', dot='.', c='c', m='m';
 const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m;
 
@@ -97,21 +97,31 @@ function initSpotifyPlayer(token) {
     if (window.Spotify) { window.onSpotifyWebPlaybackSDKReady(); }
 }
 
-// 物理的なボタンイベントの登録
 function setupButtons(token, deviceId) {
     const resetButton = document.getElementById('reset-button');
     const correctButton = document.getElementById('correct-button');
     const closeAnswerButton = document.getElementById('close-answer-button');
 
-    // 回答者リセット：状態を再生中に戻し、名前と曲名表示をクリアする
+    // サビの音声を止める共通関数
+    function stopPreview() {
+        if (previewAudio) {
+            previewAudio.pause();
+            previewAudio = null;
+        }
+    }
+
+    // 回答者リセット：サビを止め、状態を元に戻す
     resetButton.addEventListener('click', () => {
+        stopPreview();
         document.getElementById('answer-panel').style.display = 'none';
         database.ref('room').set({ status: 'playing', winner: '' });
     });
 
-    // ◯ 正解：現在再生中のメタデータをSDKから直接引っ張ってきて画面に表示する
+    // ◯ 正解：曲名を表示し、同時にサビ（プレビュー音源）を再生する
     correctButton.addEventListener('click', () => {
         if (!spotifyPlayer) return;
+
+        stopPreview(); // すでに鳴っていたら一旦リセット
 
         spotifyPlayer.getCurrentState().then(state => {
             if (!state) {
@@ -119,21 +129,40 @@ function setupButtons(token, deviceId) {
                 document.getElementById('answer-panel').style.display = 'block';
                 return;
             }
+            
+            const trackId = state.track_window.current_track.id;
             const trackName = state.track_window.current_track.name;
             const artistName = state.track_window.current_track.artists.map(a => a.name).join(', ');
             
             document.getElementById('track-info-display').textContent = `${trackName} / ${artistName}`;
             document.getElementById('answer-panel').style.display = 'block';
+
+            // Spotify APIからその曲のプレビューURL（mp3）を取得してブラウザで鳴らす
+            fetch(`${API_URL}/v1/tracks/${trackId}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(res => res.json())
+            .then(trackData => {
+                if (trackData.preview_url) {
+                    previewAudio = new Audio(trackData.preview_url);
+                    previewAudio.volume = 0.4; // サビの音量調整（0.0 〜 1.0）
+                    previewAudio.play();
+                } else {
+                    console.log('この曲はSpotify側でプレビュー音源（サビデータ）が用意されていません。');
+                }
+            })
+            .catch(err => console.error('プレビュー取得失敗:', err));
         });
     });
 
-    // 曲名表示を閉じるボタン
+    // 曲名表示を閉じる：サビを止める
     closeAnswerButton.addEventListener('click', () => {
+        stopPreview();
         document.getElementById('answer-panel').style.display = 'none';
     });
 }
 
-// ブラウザの機能を使って「ピンポーン♪」という電子音を合成して鳴らす関数
 function playBuzzerSound() {
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -141,12 +170,11 @@ function playBuzzerSound() {
         const gain = audioCtx.createGain();
         
         osc.type = 'sine';
-        // 音程の変化（ピン・ポーン）
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime); // 高い音
-        osc.frequency.setValueAtTime(660, audioCtx.currentTime + 0.25); // 低い音
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime); 
+        osc.frequency.setValueAtTime(660, audioCtx.currentTime + 0.25); 
         
         gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7); // 徐々に消音
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7); 
         
         osc.connect(gain);
         gain.connect(audioCtx.destination);
@@ -165,30 +193,23 @@ function listenToBuzzer(token, deviceId) {
         const data = snapshot.val();
         if (!data) return;
 
-        // 回答者がボタンを押して「paused」になった瞬間
         if (data.status === 'paused' && currentStatus !== 'paused') {
-            // Spotifyを一時停止
             await fetch(`${API_URL}/v1/me/player/pause?device_id=${deviceId}`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             
-            // 画面に勝者を表示
             if(data.winner) {
                 document.getElementById('winner-display').textContent = `押した人: ${data.winner}`;
             }
             
-            // PCのスピーカーから「ピンポーン」と音を鳴らす（追加機能）
             playBuzzerSound();
-            
             currentStatus = 'paused';
         } 
         
-        // ホストがリセットを押して「playing」に戻った瞬間
         else if (data.status === 'playing' && currentStatus !== 'playing') {
             document.getElementById('winner-display').textContent = '次の回答を待っています...';
             
-            // Spotifyの再生を続きから再開する
             await fetch(`${API_URL}/v1/me/player/play?device_id=${deviceId}`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}` }
