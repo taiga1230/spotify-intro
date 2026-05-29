@@ -1,12 +1,7 @@
 const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8'; 
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
-// --- 【ここを設定】使用したいSpotifyのプレイリストIDを入力 ---
-const PLAYLIST_ID = '0tdKXqsEe21ycHKUK1iS7T'; 
-
-let TRACK_LIST = []; 
-let spotifyToken = null;
-let isSdkReady = false;
+let spotifyPlayer = null; // 外部からプレイヤーを操作するためのグローバル変数
 
 // システムの自動書き換えを回避するためのドメイン生成
 const s='s', p='p', o='o', t='t', i='i', f='f', y='y', dot='.', c='c', m='m';
@@ -14,23 +9,6 @@ const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m;
 
 const ACCOUNTS_URL = "https://accounts." + spotifyDomain;
 const API_URL = "https://api." + spotifyDomain;
-
-// 【改善】SDKの準備完了イベントをロード直後に即座に捕まえ、順序バグを根絶する
-window.onSpotifyWebPlaybackSDKReady = () => {
-    isSdkReady = true;
-    if (spotifyToken) {
-        initSpotifyPlayer(spotifyToken);
-    }
-};
-
-function getRandomTrack() {
-    if (TRACK_LIST.length === 0) {
-        alert('プレイリストの曲が読み込まれていないか、空っぽです。コンソールを確認してください。');
-        return 'spotify:track:4IorGv8976Xm6nS7vB6ZpG'; 
-    }
-    const randomIndex = Math.floor(Math.random() * TRACK_LIST.length);
-    return TRACK_LIST[randomIndex];
-}
 
 // --- Firebase の初期化 ---
 const firebaseConfig = {
@@ -66,7 +44,7 @@ loginButton.addEventListener('click', async () => {
     window.localStorage.setItem('code_verifier', codeVerifier);
     const hashed = await sha256(codeVerifier);
     const codeChallenge = base64encode(hashed);
-    const scope = 'streaming user-read-email user-read-private user-modify-playback-state playlist-read-private';
+    const scope = 'streaming user-read-email user-read-private user-modify-playback-state';
     
     const authUrl = new URL(`${ACCOUNTS_URL}/authorize`);
     const params = { response_type: 'code', client_id: CLIENT_ID, scope: scope, code_challenge_method: 'S256', code_challenge: codeChallenge, redirect_uri: REDIRECT_URI, show_dialog: 'true' };
@@ -91,93 +69,93 @@ async function getToken(code) {
         if (response.access_token) {
             loginButton.style.display = 'none';
             window.history.replaceState({}, document.title, window.location.pathname);
-            
-            spotifyToken = response.access_token;
-            await loadPlaylistTracks(spotifyToken);
-            
-            // トークン取得時にすでにSDKのロードが終わっていればプレイヤーを起動
-            if (isSdkReady) {
-                initSpotifyPlayer(spotifyToken);
-            }
+            initSpotifyPlayer(response.access_token);
         }
     } catch (error) { console.error(error); }
 }
 
-async function loadPlaylistTracks(token) {
-    try {
-        const response = await fetch(`${API_URL}/v1/playlists/${PLAYLIST_ID}/tracks`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (response.status === 403) {
-            console.error('【403エラー】プレイリストの取得権限がありません。他人が作った非公開プレイリストになっているか、IDのコピーミスの可能性があります。');
-            return;
-        }
-        
-        const data = await response.json();
-        if (data.items) {
-            TRACK_LIST = data.items.map(item => item.track.uri).filter(uri => uri);
-            console.log(`プレイリストから ${TRACK_LIST.length} 曲を正常に読み込みました！`);
-        } else {
-            console.error('プレイリストの読み込みに失敗しました。', data);
-        }
-    } catch (error) {
-        console.error('通信エラー:', error);
-    }
-}
-
 function initSpotifyPlayer(token) {
-    const player = new Spotify.Player({
-        name: 'イントロドン・プレイヤー',
-        getOAuthToken: cb => { cb(token); },
-        volume: 0.5
-    });
+    window.onSpotifyWebPlaybackSDKReady = () => {
+        spotifyPlayer = new Spotify.Player({
+            name: 'イントロドン・プレイヤー',
+            getOAuthToken: cb => { cb(token); },
+            volume: 0.5
+        });
 
-    player.addListener('ready', ({ device_id }) => {
-        document.getElementById('player-controls').style.display = 'block';
-        
-        const playerUrl = 'https://taiga1230.github.io/spotify-intro/player.html';
-        const qrCodeArea = document.getElementById('qrcode-area');
-        qrCodeArea.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(playerUrl)}" alt="QR Code">`;
+        spotifyPlayer.addListener('ready', ({ device_id }) => {
+            document.getElementById('player-controls').style.display = 'block';
+            
+            const playerUrl = 'https://taiga1230.github.io/spotify-intro/player.html';
+            const qrCodeArea = document.getElementById('qrcode-area');
+            qrCodeArea.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(playerUrl)}" alt="QR Code">`;
 
-        setupButtons(token, device_id);
-        listenToBuzzer(token, device_id);
-    });
-    player.connect();
+            setupButtons(token, device_id);
+            listenToBuzzer(token, device_id);
+        });
+        spotifyPlayer.connect();
+    };
+    if (window.Spotify) { window.onSpotifyWebPlaybackSDKReady(); }
 }
 
+// 物理的なボタンイベントの登録
 function setupButtons(token, deviceId) {
-    const nextButton = document.getElementById('next-button');
+    const resetButton = document.getElementById('reset-button');
     const correctButton = document.getElementById('correct-button');
-    const resumeButton = document.getElementById('resume-button');
-    const restartButton = document.getElementById('restart-button');
+    const closeAnswerButton = document.getElementById('close-answer-button');
 
-    nextButton.addEventListener('click', () => {
-        const nextTrack = getRandomTrack();
-        database.ref('room').set({ status: 'playing', winner: '', action: 'next', trackUri: nextTrack });
+    // 回答者リセット：状態を再生中に戻し、名前と曲名表示をクリアする
+    resetButton.addEventListener('click', () => {
+        document.getElementById('answer-panel').style.display = 'none';
+        database.ref('room').set({ status: 'playing', winner: '' });
     });
 
+    // ◯ 正解：現在再生中のメタデータをSDKから直接引っ張ってきて画面に表示する
     correctButton.addEventListener('click', () => {
-        const nextTrack = getRandomTrack();
-        database.ref('room').set({ status: 'playing', winner: '', action: 'next', trackUri: nextTrack });
-    });
+        if (!spotifyPlayer) return;
 
-    resumeButton.addEventListener('click', () => {
-        database.ref('room').once('value', (snapshot) => {
-            const data = snapshot.val();
-            const currentTrack = data ? data.trackUri : getRandomTrack();
-            database.ref('room').set({ status: 'playing', winner: '', action: 'resume', trackUri: currentTrack });
+        spotifyPlayer.getCurrentState().then(state => {
+            if (!state) {
+                document.getElementById('track-info-display').textContent = '曲情報が取得できませんでした（Spotifyアプリで再生中か確認してください）';
+                document.getElementById('answer-panel').style.display = 'block';
+                return;
+            }
+            const trackName = state.track_window.current_track.name;
+            const artistName = state.track_window.current_track.artists.map(a => a.name).join(', ');
+            
+            document.getElementById('track-info-display').textContent = `${trackName} / ${artistName}`;
+            document.getElementById('answer-panel').style.display = 'block';
         });
     });
 
-    restartButton.addEventListener('click', () => {
-        database.ref('room').once('value', (snapshot) => {
-            const data = snapshot.val();
-            const currentTrack = data ? data.trackUri : getRandomTrack();
-            database.ref('room').set({ status: 'playing', winner: '', action: 'restart', trackUri: currentTrack });
-        });
+    // 曲名表示を閉じるボタン
+    closeAnswerButton.addEventListener('click', () => {
+        document.getElementById('answer-panel').style.display = 'none';
     });
+}
+
+// ブラウザの機能を使って「ピンポーン♪」という電子音を合成して鳴らす関数
+function playBuzzerSound() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sine';
+        // 音程の変化（ピン・ポーン）
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime); // 高い音
+        osc.frequency.setValueAtTime(660, audioCtx.currentTime + 0.25); // 低い音
+        
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7); // 徐々に消音
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.7);
+    } catch (e) {
+        console.error('音声再生エラー:', e);
+    }
 }
 
 function listenToBuzzer(token, deviceId) {
@@ -187,46 +165,36 @@ function listenToBuzzer(token, deviceId) {
         const data = snapshot.val();
         if (!data) return;
 
+        // 回答者がボタンを押して「paused」になった瞬間
         if (data.status === 'paused' && currentStatus !== 'paused') {
+            // Spotifyを一時停止
             await fetch(`${API_URL}/v1/me/player/pause?device_id=${deviceId}`, {
                 method: 'PUT',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
+            
+            // 画面に勝者を表示
             if(data.winner) {
                 document.getElementById('winner-display').textContent = `押した人: ${data.winner}`;
             }
+            
+            // PCのスピーカーから「ピンポーン」と音を鳴らす（追加機能）
+            playBuzzerSound();
+            
             currentStatus = 'paused';
         } 
         
-        else if (data.status === 'playing' && (currentStatus !== 'playing' || data.action === 'next' || data.action === 'restart')) {
-            document.getElementById('winner-display').textContent = '再生中...';
+        // ホストがリセットを押して「playing」に戻った瞬間
+        else if (data.status === 'playing' && currentStatus !== 'playing') {
+            document.getElementById('winner-display').textContent = '次の回答を待っています...';
             
-            // 最初から弾き直す（restart）ときは、再生命令の前にシーク（位置変更）APIを挟む
-            if (data.action === 'restart') {
-                await fetch(`${API_URL}/v1/me/player/seek?position_ms=0&device_id=${deviceId}`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-            }
-
-            let bodyData = null;
-            if (data.action === 'next' || data.action === 'restart' || currentStatus === 'initial') {
-                const targetTrack = data.trackUri || getRandomTrack();
-                bodyData = JSON.stringify({ uris: [targetTrack] });
-                
-                if (currentStatus === 'initial') {
-                    database.ref('room/trackUri').set(targetTrack);
-                }
-            }
-
+            // Spotifyの再生を続きから再開する
             await fetch(`${API_URL}/v1/me/player/play?device_id=${deviceId}`, {
                 method: 'PUT',
-                body: bodyData,
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}` }
             });
             
             currentStatus = 'playing';
-            database.ref('room/action').set('none'); 
         }
     });
 }
