@@ -2,16 +2,26 @@ const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8';
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
 // --- 【ここを設定】使用したいSpotifyのプレイリストIDを入力 ---
-const PLAYLIST_ID = '4V6IAQgDFDUK7ZURwH6Flj'; 
+const PLAYLIST_ID = '1yANyq0XTqyr84rHTKlY62'; 
 
 let TRACK_LIST = []; 
+let spotifyToken = null;
+let isSdkReady = false;
 
-// システムの自動書き換えを完全に回避するためのドメイン動的生成
+// システムの自動書き換えを回避するためのドメイン生成
 const s='s', p='p', o='o', t='t', i='i', f='f', y='y', dot='.', c='c', m='m';
-const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m; // "spotify.com" を安全に生成
+const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m;
 
 const ACCOUNTS_URL = "https://accounts." + spotifyDomain;
 const API_URL = "https://api." + spotifyDomain;
+
+// 【改善】SDKの準備完了イベントをロード直後に即座に捕まえ、順序バグを根絶する
+window.onSpotifyWebPlaybackSDKReady = () => {
+    isSdkReady = true;
+    if (spotifyToken) {
+        initSpotifyPlayer(spotifyToken);
+    }
+};
 
 function getRandomTrack() {
     if (TRACK_LIST.length === 0) {
@@ -82,8 +92,13 @@ async function getToken(code) {
             loginButton.style.display = 'none';
             window.history.replaceState({}, document.title, window.location.pathname);
             
-            await loadPlaylistTracks(response.access_token);
-            initSpotifyPlayer(response.access_token);
+            spotifyToken = response.access_token;
+            await loadPlaylistTracks(spotifyToken);
+            
+            // トークン取得時にすでにSDKのロードが終わっていればプレイヤーを起動
+            if (isSdkReady) {
+                initSpotifyPlayer(spotifyToken);
+            }
         }
     } catch (error) { console.error(error); }
 }
@@ -94,13 +109,18 @@ async function loadPlaylistTracks(token) {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const data = await response.json();
         
+        if (response.status === 403) {
+            console.error('【403エラー】プレイリストの取得権限がありません。他人が作った非公開プレイリストになっているか、IDのコピーミスの可能性があります。');
+            return;
+        }
+        
+        const data = await response.json();
         if (data.items) {
             TRACK_LIST = data.items.map(item => item.track.uri).filter(uri => uri);
             console.log(`プレイリストから ${TRACK_LIST.length} 曲を正常に読み込みました！`);
         } else {
-            console.error('プレイリストの読み込みに失敗しました。IDか権限を確認してください。', data);
+            console.error('プレイリストの読み込みに失敗しました。', data);
         }
     } catch (error) {
         console.error('通信エラー:', error);
@@ -108,26 +128,23 @@ async function loadPlaylistTracks(token) {
 }
 
 function initSpotifyPlayer(token) {
-    window.onSpotifyWebPlaybackSDKReady = () => {
-        const player = new Spotify.Player({
-            name: 'イントロドン・プレイヤー',
-            getOAuthToken: cb => { cb(token); },
-            volume: 0.5
-        });
+    const player = new Spotify.Player({
+        name: 'イントロドン・プレイヤー',
+        getOAuthToken: cb => { cb(token); },
+        volume: 0.5
+    });
 
-        player.addListener('ready', ({ device_id }) => {
-            document.getElementById('player-controls').style.display = 'block';
-            
-            const playerUrl = 'https://taiga1230.github.io/spotify-intro/player.html';
-            const qrCodeArea = document.getElementById('qrcode-area');
-            qrCodeArea.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(playerUrl)}" alt="QR Code">`;
+    player.addListener('ready', ({ device_id }) => {
+        document.getElementById('player-controls').style.display = 'block';
+        
+        const playerUrl = 'https://taiga1230.github.io/spotify-intro/player.html';
+        const qrCodeArea = document.getElementById('qrcode-area');
+        qrCodeArea.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(playerUrl)}" alt="QR Code">`;
 
-            setupButtons(token, device_id);
-            listenToBuzzer(token, device_id);
-        });
-        player.connect();
-    };
-    if (window.Spotify) { window.onSpotifyWebPlaybackSDKReady(); }
+        setupButtons(token, device_id);
+        listenToBuzzer(token, device_id);
+    });
+    player.connect();
 }
 
 function setupButtons(token, deviceId) {
@@ -184,6 +201,7 @@ function listenToBuzzer(token, deviceId) {
         else if (data.status === 'playing' && (currentStatus !== 'playing' || data.action === 'next' || data.action === 'restart')) {
             document.getElementById('winner-display').textContent = '再生中...';
             
+            // 最初から弾き直す（restart）ときは、再生命令の前にシーク（位置変更）APIを挟む
             if (data.action === 'restart') {
                 await fetch(`${API_URL}/v1/me/player/seek?position_ms=0&device_id=${deviceId}`, {
                     method: 'PUT',
