@@ -10,9 +10,16 @@
     <button id="login-button">Spotifyでログイン</button>
     
     <div id="player-controls" style="display: none; margin-top: 20px;">
-        <button id="play-button" style="font-size: 20px; padding: 10px 20px;">曲を流す（再開）</button>
-        <button id="pause-button" style="font-size: 20px; padding: 10px 20px; margin-left: 10px;">一時停止</button>
+        <div style="margin-bottom: 20px;">
+            <button id="next-button" style="font-size: 20px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">次の曲を流す (ランダム)</button>
+        </div>
         
+        <div id="action-controls" style="margin-bottom: 20px;">
+            <button id="correct-button" style="font-size: 18px; padding: 10px 15px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer;">◯ 正解 (次の曲へ)</button>
+            <button id="resume-button" style="font-size: 18px; padding: 10px 15px; background-color: #FF9800; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✕ 不正解 (続きから再開)</button>
+            <button id="restart-button" style="font-size: 18px; padding: 10px 15px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✕ 不正解 (最初から弾き直す)</button>
+        </div>
+
         <h2 id="winner-display" style="color: red; font-size: 40px; margin-top: 30px;"></h2>
 
         <hr style="margin-top: 40px;">
