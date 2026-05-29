@@ -2,7 +2,7 @@ const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8';
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
 // --- 【ここを設定】使用したいSpotifyのプレイリストIDを入力 ---
-const PLAYLIST_ID = '1yANyq0XTqyr84rHTKlY62'; 
+const PLAYLIST_ID = '37i9dQZF1DX1s9vY787xPh'; 
 
 let TRACK_LIST = []; 
 let spotifyToken = null;
