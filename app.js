@@ -4,14 +4,12 @@ const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 // --- 【ここを設定】使用したいSpotifyのプレイリストIDを入力 ---
 const PLAYLIST_ID = '4V6IAQgDFDUK7ZURwH6Flj'; 
 
-// プレイリストから取得した曲のURIがここへ自動で入ります
 let TRACK_LIST = []; 
 
-// ランダムに1曲選ぶ関数
 function getRandomTrack() {
     if (TRACK_LIST.length === 0) {
-        alert('プレイリストの曲が読み込まれていないか、空っぽです。');
-        return 'spotify:track:4IorGv8976Xm6nS7vB6ZpG'; // 万が一のときのバックアップ（ダンスホール）
+        alert('プレイリストの曲が読み込まれていないか、空っぽです。コンソールを確認してください。');
+        return 'spotify:track:4IorGv8976Xm6nS7vB6ZpG'; 
     }
     const randomIndex = Math.floor(Math.random() * TRACK_LIST.length);
     return TRACK_LIST[randomIndex];
@@ -54,12 +52,11 @@ loginButton.addEventListener('click', async () => {
     window.localStorage.setItem('code_verifier', codeVerifier);
     const hashed = await sha256(codeVerifier);
     const codeChallenge = base64encode(hashed);
-    
-    // プレイリストを読み込むための権限（playlist-read-private）をスコープに追加
     const scope = 'streaming user-read-email user-read-private user-modify-playback-state playlist-read-private';
     
     const authUrl = new URL(`${ACCOUNTS_URL}/authorize`);
-    const params = { response_type: 'code', client_id: CLIENT_ID, scope: scope, code_challenge_method: 'S256', code_challenge: codeChallenge, redirect_uri: REDIRECT_URI };
+    // show_dialog: 'true' を追加して強制的に権限同意画面を出します
+    const params = { response_type: 'code', client_id: CLIENT_ID, scope: scope, code_challenge_method: 'S256', code_challenge: codeChallenge, redirect_uri: REDIRECT_URI, show_dialog: 'true' };
     authUrl.search = new URLSearchParams(params).toString();
     window.location.href = authUrl.toString();
 });
@@ -82,15 +79,12 @@ async function getToken(code) {
             loginButton.style.display = 'none';
             window.history.replaceState({}, document.title, window.location.pathname);
             
-            // プレイヤー初期化の前に、指定されたプレイリストから曲をごっそり取得する
             await loadPlaylistTracks(response.access_token);
-            
             initSpotifyPlayer(response.access_token);
         }
     } catch (error) { console.error(error); }
 }
 
-// 追記：Spotifyのプレイリストから曲一覧を取得する関数
 async function loadPlaylistTracks(token) {
     try {
         const response = await fetch(`${API_URL}/v1/playlists/${PLAYLIST_ID}/tracks`, {
@@ -100,14 +94,13 @@ async function loadPlaylistTracks(token) {
         const data = await response.json();
         
         if (data.items) {
-            // プレイリスト内の各曲から「URI（曲の識別ID）」だけを抜き出して配列にする
             TRACK_LIST = data.items.map(item => item.track.uri).filter(uri => uri);
             console.log(`プレイリストから ${TRACK_LIST.length} 曲を正常に読み込みました！`);
         } else {
-            console.error('プレイリストのデータ構造が正しくありません', data);
+            console.error('プレイリストの読み込みに失敗しました。IDが間違っている可能性があります。', data);
         }
     } catch (error) {
-        console.error('プレイリストの取得中にエラーが発生しました:', error);
+        console.error('通信エラー:', error);
     }
 }
 
@@ -188,13 +181,19 @@ function listenToBuzzer(token, deviceId) {
         else if (data.status === 'playing' && (currentStatus !== 'playing' || data.action === 'next' || data.action === 'restart')) {
             document.getElementById('winner-display').textContent = '再生中...';
             
+            // 【強化】「最初から弾き直す」のときは、先に再生位置を0ミリ秒（曲の冒頭）にシークさせる命令を出す
+            if (data.action === 'restart') {
+                await fetch(`${API_URL}/v1/me/player/seek?position_ms=0&device_id=${deviceId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            }
+
             let bodyData = null;
             if (data.action === 'next' || data.action === 'restart' || currentStatus === 'initial') {
-                // 初回、または「次へ」「最初から」のときは、選ばれた曲のIDをセットして1から流す
                 const targetTrack = data.trackUri || getRandomTrack();
                 bodyData = JSON.stringify({ uris: [targetTrack] });
                 
-                // 初回起動時用のデータ同期
                 if (currentStatus === 'initial') {
                     database.ref('room/trackUri').set(targetTrack);
                 }
