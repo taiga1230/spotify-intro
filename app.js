@@ -2,7 +2,7 @@ const CLIENT_ID = '93fe81b4793c46f693d2ec27e134d5b8';
 const REDIRECT_URI = 'https://taiga1230.github.io/spotify-intro/';
 
 let spotifyPlayer = null; 
-let audioCtx = null; // ブザー音用の音声コンテキストをグローバルで管理
+let audioCtx = null; 
 
 const s='s', p='p', o='o', t='t', i='i', f='f', y='y', dot='.', c='c', m='m';
 const spotifyDomain = s+p+o+t+i+f+y+dot+c+o+m;
@@ -97,7 +97,6 @@ function initSpotifyPlayer(token) {
     if (window.Spotify) { window.onSpotifyWebPlaybackSDKReady(); }
 }
 
-// 【ブザー音対策】ボタンをクリックした瞬間にブラウザの音声ブロックを解除する関数
 function initAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -113,7 +112,6 @@ function setupButtons(token, deviceId) {
     const correctButton = document.getElementById('correct-button');
     const closeAnswerButton = document.getElementById('close-answer-button');
 
-    // ボタンを押したタイミング（ユーザージェスチャー）で音声システムを起動・再開させる
     resumeResetButton.addEventListener('click', () => {
         initAudio();
         document.getElementById('answer-panel').style.display = 'none';
@@ -151,7 +149,7 @@ function setupButtons(token, deviceId) {
 
 function playBuzzerSound() {
     try {
-        initAudio(); // 音声コンテキストの状態を確認
+        initAudio(); 
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         
@@ -180,16 +178,21 @@ function listenToBuzzer(token, deviceId) {
         if (!data) return;
 
         if (data.status === 'paused' && currentStatus !== 'paused') {
-            // 【変更】特定デバイスIDの縛りを外し、現在音が出ているアクティブなアプリを一時停止する
-            await fetch(`${API_URL}/v1/me/player/pause`, {
-                method: 'PUT',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            // 【改善】エラーが起きても処理を殺さないよう、API通信をtry-catchで防御
+            try {
+                await fetch(`${API_URL}/v1/me/player/pause?device_id=${deviceId}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            } catch (e) {
+                console.error('Spotifyへの一時停止命令が制限されました。:', e);
+            }
             
             if(data.winner) {
                 document.getElementById('winner-display').textContent = `押した人: ${data.winner}`;
             }
             
+            // 通信状態に関わらず、ブザー音は100%確実に鳴らします
             playBuzzerSound();
             currentStatus = 'paused';
         } 
@@ -197,12 +200,15 @@ function listenToBuzzer(token, deviceId) {
         else if (data.status === 'playing' && (currentStatus !== 'playing' || data.action === 'resume')) {
             document.getElementById('winner-display').textContent = '次の回答を待っています...';
             
-            // 【変更】特定デバイスIDの縛りを外し、アクティブなアプリの再生を再開する
             if (data.action === 'resume') {
-                await fetch(`${API_URL}/v1/me/player/play`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                try {
+                    await fetch(`${API_URL}/v1/me/player/play?device_id=${deviceId}`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (e) {
+                    console.error('Spotifyへの再生再開命令が制限されました。:', e);
+                }
             }
             
             currentStatus = 'playing';
